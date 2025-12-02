@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:restauran/models/pedido.dart';
+import 'package:restauran/providers/auth_provider.dart';
 import 'package:restauran/services/api_service.dart';
 import 'package:intl/intl.dart';
-import 'package:restauran/screens/pedido/pedido_detalle_screen.dart'; // 1. Importamos la pantalla de detalle
+import 'package:restauran/screens/pedido/pedido_detalle_screen.dart';
+import 'package:restauran/services/unauthorized_exception.dart';
 
 class HistoriaScreen extends StatefulWidget {
   const HistoriaScreen({super.key});
@@ -21,6 +24,10 @@ class _HistoriaScreenState extends State<HistoriaScreen> {
     _loadHistorial();
   }
 
+  void _handleUnauthorized() {
+    Provider.of<AuthProvider>(context, listen: false).logout();
+  }
+
   void _loadHistorial() {
     setState(() {
       // Usamos el endpoint correcto que devuelve TODOS los pedidos
@@ -31,13 +38,15 @@ class _HistoriaScreenState extends State<HistoriaScreen> {
   Future<List<Pedido>> _fetchHistorial(String endpoint) async {
     try {
       final data = await _apiService.get(endpoint);
-      final pedidos = (data as List)
-          .map((item) => Pedido.fromJson(item))
-          .toList();
+      final pedidos =
+          (data as List).map((item) => Pedido.fromJson(item)).toList();
 
       // Ordenar por fecha de creación descendente
       pedidos.sort((a, b) => b.fechaCreacion.compareTo(a.fechaCreacion));
       return pedidos;
+    } on UnauthorizedException {
+      _handleUnauthorized();
+      return [];
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -235,9 +244,8 @@ class _HistoriaScreenState extends State<HistoriaScreen> {
   Widget _buildTableRow(BuildContext context, Pedido pedido) {
     // Datos simulados para Pts y Tiempo (ya que el backend no los tiene aún)
     final String puntos = (pedido.estadoPedido == 'ENTREGADO') ? '5' : '0';
-    final String tiempo = (pedido.estadoPedido == 'ENTREGADO')
-        ? '00:15:20'
-        : '00:00:00';
+    final String tiempo =
+        (pedido.estadoPedido == 'ENTREGADO') ? '00:15:20' : '00:00:00';
     final bool isEvenRow = (pedido.pedidoId % 2 == 0);
 
     // 4. Envolvemos en InkWell para detectar el toque

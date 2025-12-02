@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:restauran/models/repartidor.dart';
+import 'package:restauran/providers/auth_provider.dart';
 import 'package:restauran/services/api_service.dart';
+import 'package:restauran/services/unauthorized_exception.dart';
 import 'package:restauran/utils/app_theme_color.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -40,6 +43,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
+  void _handleUnauthorized() {
+    Provider.of<AuthProvider>(context, listen: false).logout();
+  }
+
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) {
       return; // No hacer nada si el formulario no es válido
@@ -69,6 +76,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           true,
         ); // Devuelve 'true' para indicar que se actualizó
       }
+    } on UnauthorizedException {
+      _handleUnauthorized();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

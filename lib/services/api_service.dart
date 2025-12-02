@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:restauran/services/unauthorized_exception.dart';
 
 class ApiService {
   final String _baseUrl =
@@ -54,6 +55,8 @@ class ApiService {
         return jsonDecode(utf8.decode(response.bodyBytes));
       }
       return null;
+    } else if (response.statusCode == 401 || response.statusCode == 403) {
+      throw UnauthorizedException('No autorizado: ${response.statusCode}');
     } else {
       // Considera un manejo de errores más robusto
       print('Error en la petición: ${response.statusCode}');

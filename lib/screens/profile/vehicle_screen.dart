@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:restauran/models/vehiculo.dart'; // ¡Necesitarás crear este modelo!
+import 'package:restauran/providers/auth_provider.dart';
 import 'package:restauran/services/api_service.dart';
+import 'package:restauran/services/unauthorized_exception.dart';
 import 'package:restauran/utils/app_theme_color.dart';
 
 class VehicleScreen extends StatefulWidget {
@@ -47,6 +50,10 @@ class _VehicleScreenState extends State<VehicleScreen> {
     super.dispose();
   }
 
+  void _handleUnauthorized() {
+    Provider.of<AuthProvider>(context, listen: false).logout();
+  }
+
   Future<Vehiculo> _fetchVehicle() async {
     try {
       final data = await _apiService.get('/repartidor/vehiculo');
@@ -60,6 +67,9 @@ class _VehicleScreenState extends State<VehicleScreen> {
       _tipoController.text = vehiculo.tipo;
 
       return vehiculo;
+    } on UnauthorizedException {
+      _handleUnauthorized();
+      rethrow;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -98,6 +108,8 @@ class _VehicleScreenState extends State<VehicleScreen> {
         );
         Navigator.pop(context);
       }
+    } on UnauthorizedException {
+      _handleUnauthorized();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

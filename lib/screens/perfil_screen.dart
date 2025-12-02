@@ -5,6 +5,7 @@ import 'package:restauran/providers/auth_provider.dart'; // Importa tu AuthProvi
 import 'package:restauran/services/api_service.dart';
 import 'package:restauran/screens/profile/edit_profile_screen.dart';
 import 'package:restauran/screens/profile/vehicle_screen.dart';
+import 'package:restauran/services/unauthorized_exception.dart';
 import 'package:restauran/utils/app_theme_color.dart';
 
 class PerfilScreen extends StatefulWidget {
@@ -24,6 +25,10 @@ class _PerfilScreenState extends State<PerfilScreen> {
     _loadRepartidorData();
   }
 
+  void _handleUnauthorized() {
+    Provider.of<AuthProvider>(context, listen: false).logout();
+  }
+
   void _loadRepartidorData() {
     setState(() {
       _repartidorFuture = _fetchRepartidor();
@@ -34,6 +39,9 @@ class _PerfilScreenState extends State<PerfilScreen> {
     try {
       final data = await _apiService.get('/repartidor/me');
       return Repartidor.fromJson(data);
+    } on UnauthorizedException {
+      _handleUnauthorized();
+      rethrow;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

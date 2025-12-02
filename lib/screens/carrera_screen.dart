@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:restauran/models/pedido.dart';
+import 'package:restauran/providers/auth_provider.dart';
 import 'package:restauran/services/api_service.dart';
+import 'package:restauran/services/unauthorized_exception.dart';
 import 'package:restauran/widgets/pedido_card.dart'; // Importar el nuevo widget
 
 class CarreraScreen extends StatefulWidget {
@@ -22,6 +25,10 @@ class _CarreraScreenState extends State<CarreraScreen> {
     _loadAllData();
   }
 
+  void _handleUnauthorized() {
+    Provider.of<AuthProvider>(context, listen: false).logout();
+  }
+
   // Carga tanto el estado del repartidor como la lista de pedidos
   void _loadAllData() {
     _loadRepartidorStatus();
@@ -39,9 +46,13 @@ class _CarreraScreenState extends State<CarreraScreen> {
   Future<void> _loadRepartidorStatus() async {
     try {
       final data = await _apiService.get('/repartidor/me');
-      setState(() {
-        _isEnLinea = data['estado_disponibilidad'] == 'disponible';
-      });
+      if (mounted) {
+        setState(() {
+          _isEnLinea = data['estado_disponibilidad'] == 'disponible';
+        });
+      }
+    } on UnauthorizedException {
+      _handleUnauthorized();
     } catch (e) {
       // Manejo de error silencioso para el estado
       print('Error al cargar estado: $e');
@@ -57,10 +68,16 @@ class _CarreraScreenState extends State<CarreraScreen> {
           .map((pedidoJson) => Pedido.fromJson(pedidoJson))
           .toList();
       return pedidos;
+    } on UnauthorizedException {
+      _handleUnauthorized();
+      return [];
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al cargar historial: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(
+            SnackBar(content: Text('Error al cargar historial: $e')));
+      }
       return []; // Retorna lista vacía en caso de error
     }
   }
@@ -75,17 +92,25 @@ class _CarreraScreenState extends State<CarreraScreen> {
       await _apiService.put('/repartidor/status', {
         'estado_disponibilidad': nuevoEstado,
       });
-      setState(() {
-        _isEnLinea = value;
-      });
+      if (mounted) {
+        setState(() {
+          _isEnLinea = value;
+        });
+      }
+    } on UnauthorizedException {
+      _handleUnauthorized();
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al cambiar estado: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al cambiar estado: $e')));
+      }
     } finally {
-      setState(() {
-        _isLoadingToggle = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingToggle = false;
+        });
+      }
     }
   }
 

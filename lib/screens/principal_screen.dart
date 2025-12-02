@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:restauran/models/pedido.dart';
 import 'package:restauran/models/repartidor.dart';
 import 'package:restauran/services/api_service.dart';
+import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 
 // Modelo combinado para los datos de la pantalla
 class PrincipalData {
@@ -22,17 +24,56 @@ class _PrincipalScreenState extends State<PrincipalScreen> {
   final ApiService _apiService = ApiService();
   Future<PrincipalData>? _dataFuture;
   bool _isLoadingToggle = false;
-
+  Timer? _timer; // <--- Variable para el timer
   @override
   void initState() {
     super.initState();
     _loadData();
+    // Iniciar el polling cada 2 segundos
+    _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      // Solo recargar si estamos 'En Linea' o si hay un pedido activo
+      _loadDataSilencioso();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel(); // <--- IMPORTANTE: Cancelar al salir
+    super.dispose();
   }
 
   void _loadData() {
     setState(() {
       _dataFuture = _fetchData();
     });
+  }
+
+  Future<void> _loadDataSilencioso() async {
+    try {
+      final repartidorData = await _apiService.get('/repartidor/me');
+      final repartidor = Repartidor.fromJson(repartidorData);
+
+      Pedido? pedidoActivo;
+      try {
+        final pedidoData = await _apiService.get('/repartidor/pedidos/activo');
+        pedidoActivo = Pedido.fromJson(pedidoData);
+      } catch (e) {
+        /* ignorar 404 */
+      }
+
+      if (mounted) {
+        setState(() {
+          // Actualizar el future o variables locales directamente
+          // Lo ideal seria usar variables en lugar de FutureBuilder para esto,
+          // pero para la demo, puedes llamar a _loadData() normal si no molesta el parpadeo.
+          _dataFuture = Future.value(
+            PrincipalData(repartidor: repartidor, pedidoActivo: pedidoActivo),
+          );
+        });
+      }
+    } catch (e) {
+      print("Error polling: $e");
+    }
   }
 
   Future<PrincipalData> _fetchData() async {
@@ -67,21 +108,68 @@ class _PrincipalScreenState extends State<PrincipalScreen> {
     setState(() {
       _isLoadingToggle = true;
     });
+
     try {
+      // A. OBTENER POSICIÓN ACTUAL (Real o Fake GPS)
+      // Esto pedirá permisos si no los tiene
+      Position position = await _determinePosition();
+      print(
+        "📍 Ubicación obtenida: ${position.latitude}, ${position.longitude}",
+      );
+
       final nuevoEstado = isDisponible ? 'disponible' : 'no_disponible';
+
+      // B. ENVIAR AL BACKEND CON COORDENADAS
       await _apiService.put('/repartidor/status', {
         'estado_disponibilidad': nuevoEstado,
+        'latitud': position.latitude, // <--- CAMPO CLAVE
+        'longitud': position.longitude, // <--- CAMPO CLAVE
       });
-      _loadData(); // Recargar todos los datos
+
+      _loadData();
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error al actualizar estado: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error GPS/API: $e')));
+      // Opcional: Si falla, podrías revertir el switch visualmente aquí
     } finally {
       setState(() {
         _isLoadingToggle = false;
       });
     }
+  }
+
+  // --- FUNCIÓN AUXILIAR REQUERIDA POR GEOLOCATOR ---
+  // Copia y pega esto también dentro de tu clase _PrincipalScreenState
+  Future<Position> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // 1. Verificar si el GPS está encendido
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return Future.error('El GPS está desactivado. Actívalo para continuar.');
+    }
+
+    // 2. Verificar permisos
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return Future.error('Permisos de ubicación denegados.');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return Future.error(
+        'Permisos denegados permanentemente. Habilítalos en Ajustes.',
+      );
+    }
+
+    // 3. Obtener ubicación (Alta precisión para que el Fake GPS funcione bien)
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
   }
 
   Future<void> _handleAction(String action, int pedidoId) async {
