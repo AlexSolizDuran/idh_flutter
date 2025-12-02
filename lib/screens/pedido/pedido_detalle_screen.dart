@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:restauran/models/pedido.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PedidoDetalleScreen extends StatelessWidget {
   final Pedido pedido;
@@ -49,6 +50,45 @@ class PedidoDetalleScreen extends StatelessWidget {
                   pedido.cliente.nombreTelegram ?? 'N/A',
                 ),
                 _buildInfoCard('Direccion', pedido.direccionEntrega),
+
+                if (pedido.latitudCliente != null &&
+                    pedido.longitudCliente != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text("Ver Ubicación Cliente en Mapa"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent, // Color azul mapa
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.all(12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: () async {
+                        final lat = pedido.latitudCliente;
+                        final lon = pedido.longitudCliente;
+                        // URL universal para abrir Google Maps / Waze / Maps en iOS
+                        final url = Uri.parse(
+                          "https://www.google.com/maps/search/?api=1&query=$lat,$lon",
+                        );
+
+                        if (await canLaunchUrl(url)) {
+                          await launchUrl(
+                            url,
+                            mode: LaunchMode.externalApplication,
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("No se pudo abrir el mapa"),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
                 _buildInfoCard(
                   'Fecha',
                   DateFormat('dd / MM / yyyy').format(pedido.fechaCreacion),

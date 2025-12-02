@@ -5,7 +5,7 @@ import 'package:restauran/services/unauthorized_exception.dart';
 
 class ApiService {
   final String _baseUrl =
-      'http://10.0.2.2:8000/api'; // Reemplaza con la URL de tu backend
+      'https://idh-back.onrender.com/api'; // Reemplaza con la URL de tu backend
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   Future<String?> _getToken() async {

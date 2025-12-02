@@ -10,6 +10,8 @@ class Pedido {
   final String? instruccionesEntrega;
   final DateTime fechaCreacion;
   final Cliente cliente; // 2. Añadir el objeto cliente
+  final double? latitudCliente;
+  final double? longitudCliente;
 
   Pedido({
     required this.pedidoId,
@@ -20,7 +22,9 @@ class Pedido {
     required this.montoTotal,
     this.instruccionesEntrega,
     required this.fechaCreacion,
-    required this.cliente, // 3. Añadir al constructor
+    required this.cliente,
+    this.latitudCliente,
+    this.longitudCliente,
   });
 
   factory Pedido.fromJson(Map<String, dynamic> json) {
@@ -33,7 +37,13 @@ class Pedido {
       montoTotal: (json['monto_total'] as num).toDouble(),
       instruccionesEntrega: json['instrucciones_entrega'],
       fechaCreacion: DateTime.parse(json['fecha_creacion']),
-      cliente: Cliente.fromJson(json['cliente']), // 4. Mapear el cliente
+      cliente: Cliente.fromJson(json['cliente']),
+      latitudCliente: json['latitud_cliente'] != null
+          ? (json['latitud_cliente'] as num).toDouble()
+          : null,
+      longitudCliente: json['longitud_cliente'] != null
+          ? (json['longitud_cliente'] as num).toDouble()
+          : null,
     );
   }
 }
