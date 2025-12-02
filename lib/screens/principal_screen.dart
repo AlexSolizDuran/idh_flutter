@@ -3,7 +3,10 @@ import 'package:restauran/models/pedido.dart';
 import 'package:restauran/models/repartidor.dart';
 import 'package:restauran/services/api_service.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart'; // <--- Agregar
+import 'package:latlong2/latlong.dart';
 import 'dart:async';
+import 'package:restauran/screens/pedido/pedido_detalle_screen.dart'; // <--- AGREGAR
 
 // Modelo combinado para los datos de la pantalla
 class PrincipalData {
@@ -25,13 +28,21 @@ class _PrincipalScreenState extends State<PrincipalScreen> {
   Future<PrincipalData>? _dataFuture;
   bool _isLoadingToggle = false;
   Timer? _timer; // <--- Variable para el timer
+
+  Pedido? _pedidoActual;
   @override
   void initState() {
     super.initState();
     _loadData();
     // Iniciar el polling cada 2 segundos
     _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      // Solo recargar si estamos 'En Linea' o si hay un pedido activo
+      // CONDICIÓN: Si ya tengo un pedido y NO estoy solo "buscando" (o sea, ya lo acepté),
+      // entonces NO recargo automáticamente.
+      if (_pedidoActual != null &&
+          _pedidoActual!.estadoPedido != 'BUSCANDO_REPARTIDOR') {
+        return;
+      }
+
       _loadDataSilencioso();
     });
   }
@@ -58,14 +69,15 @@ class _PrincipalScreenState extends State<PrincipalScreen> {
         final pedidoData = await _apiService.get('/repartidor/pedidos/activo');
         pedidoActivo = Pedido.fromJson(pedidoData);
       } catch (e) {
-        /* ignorar 404 */
+        /* 404 ignorado */
       }
+
+      // --- ACTUALIZAR VARIABLE DE CONTROL ---
+      _pedidoActual = pedidoActivo;
+      // -------------------------------------
 
       if (mounted) {
         setState(() {
-          // Actualizar el future o variables locales directamente
-          // Lo ideal seria usar variables en lugar de FutureBuilder para esto,
-          // pero para la demo, puedes llamar a _loadData() normal si no molesta el parpadeo.
           _dataFuture = Future.value(
             PrincipalData(repartidor: repartidor, pedidoActivo: pedidoActivo),
           );
@@ -78,28 +90,28 @@ class _PrincipalScreenState extends State<PrincipalScreen> {
 
   Future<PrincipalData> _fetchData() async {
     try {
-      // 1. Obtener los datos del repartidor (siempre debe funcionar)
       final repartidorData = await _apiService.get('/repartidor/me');
       final repartidor = Repartidor.fromJson(repartidorData);
 
-      // 2. Intentar obtener el pedido activo
       Pedido? pedidoActivo;
       try {
         final pedidoData = await _apiService.get('/repartidor/pedidos/activo');
         pedidoActivo = Pedido.fromJson(pedidoData);
       } catch (e) {
-        // Si el error es 404, significa que no hay pedido activo.
-        // Lo ignoramos y dejamos pedidoActivo = null
         if (!e.toString().contains('404')) {
-          rethrow; // Lanzar otros errores (ej. 500)
+          rethrow;
         }
       }
+
+      // --- ACTUALIZAR VARIABLE DE CONTROL ---
+      _pedidoActual = pedidoActivo;
+      // -------------------------------------
 
       return PrincipalData(repartidor: repartidor, pedidoActivo: pedidoActivo);
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error al cargar datos: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
       rethrow;
     }
   }
@@ -322,75 +334,142 @@ class _PrincipalScreenState extends State<PrincipalScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Pedido #${pedido.pedidoId}',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      Row(
-                        children: [
-                          Icon(Icons.timer, color: Colors.redAccent, size: 20),
-                          SizedBox(width: 4),
-                          Text(
-                            '$minutos min',
-                            style: TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const Divider(),
-                  Text(
-                    'Cliente: ${pedido.cliente.nombreTelegram ?? "N/A"}',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Dirección: ${pedido.direccionEntrega}',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildActionButtons(pedido),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Marcador de posición del Mapa
-          Card(
-            elevation: 4,
+            // Usamos Clip.antiAlias para que el efecto de tinta respete los bordes redondeados
             clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Container(
-              height: 250,
-              color: Colors.grey[300],
-              child: Center(
+            child: InkWell(
+              // --- AQUÍ ESTÁ LA MAGIA: NAVEGACIÓN AL DETALLE ---
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PedidoDetalleScreen(pedido: pedido),
+                  ),
+                );
+              },
+              // ------------------------------------------------
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.map, size: 50, color: Colors.grey[600]),
-                    Text(
-                      'Marcador de posición del Mapa',
-                      style: TextStyle(color: Colors.grey[700]),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Pedido #${pedido.pedidoId}',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.timer,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$minutos min',
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
+                    const Divider(),
+                    Text(
+                      'Cliente: ${pedido.cliente.nombreTelegram ?? "N/A"}',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Dirección: ${pedido.direccionEntrega}',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    // Nota visual para indicar que es clickeable
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          "Ver detalles >",
+                          style: TextStyle(color: Colors.blue, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _buildActionButtons(pedido),
                   ],
                 ),
               ),
             ),
           ),
+          const SizedBox(height: 16),
+
+          // === REEMPLAZAR DESDE AQUÍ ===
+          if (pedido.latitudCliente != null && pedido.longitudCliente != null)
+            Card(
+              elevation: 4,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: SizedBox(
+                height: 250, // Altura del mapa
+                child: FlutterMap(
+                  options: MapOptions(
+                    // Centramos el mapa en la ubicación del CLIENTE
+                    initialCenter: LatLng(
+                      pedido.latitudCliente!,
+                      pedido.longitudCliente!,
+                    ),
+                    initialZoom: 15.0,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.restauran',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        // Marcador del CLIENTE (Destino)
+                        Marker(
+                          point: LatLng(
+                            pedido.latitudCliente!,
+                            pedido.longitudCliente!,
+                          ),
+                          width: 80,
+                          height: 80,
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Colors.red,
+                            size: 40,
+                          ),
+                        ),
+                        // Opcional: Podrías agregar otro marcador para el REPARTIDOR (tu ubicación actual)
+                        // si tienes acceso a la variable 'position' aquí.
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            // Mensaje si el pedido no tiene ubicación (por ejemplo, pedidos viejos)
+            Card(
+              elevation: 2,
+              color: Colors.grey[200],
+              child: const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(
+                  child: Text("Este pedido no tiene ubicación de mapa."),
+                ),
+              ),
+            ),
         ],
       ),
     );
